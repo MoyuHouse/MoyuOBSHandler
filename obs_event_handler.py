@@ -9,7 +9,6 @@ import uuid
 from typing import Any
 from urllib.parse import unquote
 
-import tornado.concurrent
 import tornado.httpclient
 import tornado.ioloop
 import tornado.options
@@ -27,6 +26,11 @@ HTTP_BAD_REQUEST = 400
 
 
 def check_data(data) -> bool:
+    """
+    This function check if the data is valid
+    :param data: The post request data
+    :return: If the data is valid
+    """
     if data:
         json_data = json.loads(data)
         if json_data:
@@ -53,6 +57,12 @@ class OBSEventHandler(tornado.web.RequestHandler):
             self.addons_path = config['l4d2server']['addons_path']
             self.temp_path = config['l4d2server']['temp_path']
             self.obs_bucket = config['l4d2server']['obs_bucket']
+
+    def data_received(self, data: bytes):
+        """
+        This is for the pylint. The super function throws NotImplementedError
+        """
+        pass
 
     def archive_file_handler(self, file_path):
         """
@@ -119,7 +129,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         self.write(json.dumps(success_ret))
         self.set_header('Content-Type', 'application/json')
 
-    @tornado.concurrent.run_on_executor
+    @concurrent.run_on_executor
     def handle_zip_file(self, datas):
         """
         This function handle the main process of archives handling
