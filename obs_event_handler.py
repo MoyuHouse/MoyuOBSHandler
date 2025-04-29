@@ -38,6 +38,7 @@ def check_data(data) -> bool:
     return False
 
 
+# pylint: disable=W0223
 class OBSEventHandler(tornado.web.RequestHandler):
     """
     The OBS HTTP Server Class
@@ -57,12 +58,6 @@ class OBSEventHandler(tornado.web.RequestHandler):
             self.addons_path = config['l4d2server']['addons_path']
             self.temp_path = config['l4d2server']['temp_path']
             self.obs_bucket = config['l4d2server']['obs_bucket']
-
-    def data_received(self, data: bytes):
-        """
-        This is for the pylint. The super function throws NotImplementedError
-        """
-        pass
 
     def archive_file_handler(self, file_path):
         """
