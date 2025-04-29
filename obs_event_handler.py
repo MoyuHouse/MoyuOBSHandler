@@ -1,3 +1,8 @@
+"""
+    Author: @DZDcyj
+    This module provides the basic structure of the http server for obs monitor
+"""
+
 import json
 import subprocess
 import uuid
@@ -10,7 +15,8 @@ import tornado.ioloop
 import tornado.options
 import tornado.web
 import yaml
-from tornado import gen, concurrent, httputil
+from tornado import gen, concurrent
+from tornado.httputil import HTTPServerRequest
 from tornado.options import define, options
 from tornado.web import Application
 
@@ -29,17 +35,31 @@ def check_data(data) -> bool:
 
 
 class OBSEventHandler(tornado.web.RequestHandler):
+    """
+    The OBS HTTP Server Class
+    """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
-    def __init__(self, application: "Application", request: httputil.HTTPServerRequest, **kwargs: Any):
+    def __init__(self, application: "Application", request: HTTPServerRequest, **kwargs: Any):
+        """
+        The OBS HTTP Server Class initialization.
+        :param application: Inherit from super class
+        :param request: Inherit from super class
+        :param kwargs: Inherit from super class
+        """
         super().__init__(application, request, **kwargs)
-        with open('config/config.yaml', 'r') as stream:
+        with open('config/config.yaml', 'r', encoding='utf-8') as stream:
             config = yaml.safe_load(stream)
             self.addons_path = config['l4d2server']['addons_path']
             self.temp_path = config['l4d2server']['temp_path']
             self.obs_bucket = config['l4d2server']['obs_bucket']
 
     def archive_file_handler(self, file_path):
+        """
+        Handle the Archive File
+        :param file_path: The archive file path
+        This function unzip the archive file of zip rar and 7z
+        """
         orig_file_name = file_path.split('/')[-1]
         # 获取类型
         # 规范来讲应该通过文件头等方式确认，但考虑到内部使用就不做额外验证了
@@ -64,6 +84,9 @@ class OBSEventHandler(tornado.web.RequestHandler):
             shell=True))
 
     def send_400_response(self):
+        """
+        function that return 400 response
+        """
         bad_ret = {
             "code": HTTP_BAD_REQUEST,
             "data": {
@@ -76,6 +99,9 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
     @gen.coroutine
     def post(self):
+        """
+        Main Function that handle the post requests
+        """
         if not check_data(self.request.body):
             self.send_400_response()
             return
@@ -95,6 +121,10 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
     @tornado.concurrent.run_on_executor
     def handle_zip_file(self, datas):
+        """
+        This function handle the main process of archives handling
+        :param datas: The post request body
+        """
         # datas 为 bytes
         req = json.loads(datas)
         obs_orig_file = req['subject']
@@ -119,7 +149,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         print('Moving VPKs...')
         vpks = subprocess.run(
             f'ls {self.temp_path} | grep vpk',
-            shell=True, capture_output=True).stdout
+            shell=True, capture_output=True, check=False).stdout
         print('vpks:\n', vpks.decode('utf-8'))
         vpk_files = vpks.decode('utf-8').strip().split('\n')
         subprocess.call(
@@ -129,7 +159,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         for vpk_file in vpk_files:
             chk_rst = subprocess.run(
                 f'ls {self.addons_path}"{vpk_file}"',
-                shell=True, capture_output=True)
+                shell=True, capture_output=True, check=False)
             print(chk_rst.stdout.decode('utf-8'))
 
 
@@ -137,6 +167,9 @@ urls = [(r'/', OBSEventHandler), ]
 
 
 def main():
+    """
+    The main function, starts the server
+    """
     tornado.options.parse_command_line()
     print('Listen at port:', options.port)
     app = tornado.web.Application(urls, debug=True)
