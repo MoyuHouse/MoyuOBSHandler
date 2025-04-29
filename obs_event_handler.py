@@ -1,7 +1,7 @@
 import json
 import subprocess
 import uuid
-import yaml
+from typing import Any
 from urllib.parse import unquote
 
 import tornado.concurrent
@@ -9,8 +9,10 @@ import tornado.httpclient
 import tornado.ioloop
 import tornado.options
 import tornado.web
-from tornado import gen, concurrent
+import yaml
+from tornado import gen, concurrent, httputil
 from tornado.options import define, options
+from tornado.web import Application
 
 define("port", default=1919, help="run on the given port", type=int)
 
@@ -28,6 +30,14 @@ def check_data(data) -> bool:
 
 class OBSEventHandler(tornado.web.RequestHandler):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+
+    def __init__(self, application: "Application", request: httputil.HTTPServerRequest, **kwargs: Any):
+        super().__init__(application, request, **kwargs)
+        with open('config/config.yaml', 'r') as stream:
+            config = yaml.safe_load(stream)
+            self.addons_path = config['l4d2server']['addons_path']
+            self.temp_path = config['l4d2server']['temp_path']
+            self.obs_bucket = config['l4d2server']['obs_bucket']
 
     def archive_file_handler(self, file_path):
         orig_file_name = file_path.split('/')[-1]
@@ -92,7 +102,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         obs_file = unquote(obs_orig_file)
         print(f'{obs_file} upload detected!')
         print(f'Downloading {obs_file}...')
-        result = subprocess.call(['obsutil', 'cp', f'obs://{self.bucket_name}/{obs_file}', self.temp_path])
+        result = subprocess.call(['obsutil', 'cp', f'obs://{self.obs_bucket}/{obs_file}', self.temp_path])
         if result != 0:
             print(f'Error: {result}')
 
@@ -113,21 +123,14 @@ class OBSEventHandler(tornado.web.RequestHandler):
         print('vpks:\n', vpks.decode('utf-8'))
         vpk_files = vpks.decode('utf-8').strip().split('\n')
         subprocess.call(
-            f'mv {self.temp_path}/*.vpk {self.addon_path}',
+            f'mv {self.temp_path}/*.vpk {self.addons_path}',
             shell=True)
         print('Moved VPKs!')
         for vpk_file in vpk_files:
             chk_rst = subprocess.run(
-                f'ls {self.addon_path}"{vpk_file}"',
+                f'ls {self.addons_path}"{vpk_file}"',
                 shell=True, capture_output=True)
             print(chk_rst.stdout.decode('utf-8'))
-
-    def load_config_from_file(self):
-        with open('config/config.yaml', 'r') as stream:
-            config = yaml.safe_load(stream)
-            self.addon_path = config['l4d2server']['addon_path']
-            self.temp_path = config['l4d2server']['temp_path']
-            self.bucket_name = config['l4d2server']['bucket_name']
 
 
 urls = [(r'/', OBSEventHandler), ]
