@@ -1,2 +1,5 @@
 # Ignore Idea Configs
 /.Idea
+
+# Ignore the config file
+/config
