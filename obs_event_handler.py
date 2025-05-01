@@ -25,7 +25,7 @@ define("port", default=1919, help="run on the given port", type=int)
 HTTP_ACCEPT = 202
 HTTP_BAD_REQUEST = 400
 
-logger = logging.getLogger("tornado.general")
+logger = logging.getLogger(__name__)
 
 
 def check_data(data) -> bool:
