@@ -89,7 +89,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
         result = subprocess.run(
             f'cd {self.temp_path} && {unzip_tool} {params} {orig_file_name}',
-            shell=True, capture_output=True).stdout.decode('utf-8').strip()
+            shell=True, capture_output=True, check=False).stdout.decode('utf-8').strip()
         logger.debug(result)
 
     def send_400_response(self):
@@ -142,12 +142,13 @@ class OBSEventHandler(tornado.web.RequestHandler):
         logger.info('%s upload detected!', obs_file)
         logger.info('Downloading %s...', obs_file)
         ret = subprocess.run(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}', shell=True,
-                             capture_output=True).returncode
+                             capture_output=True, check=False).returncode
         if ret != 0:
             logger.error('Error Occurred at Downloading Files: %s', obs_file)
             return
 
-        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True).stdout.decode('utf-8').strip()
+        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
+            'utf-8').strip()
         files = ', '.join(result.split('\n'))
         logger.info('Files in %s: [%s]', self.temp_path, files)
 
@@ -156,7 +157,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
         self.archive_file_handler(obs_file)
         logger.info('Unpack Step Complete!')
 
-        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True).stdout.decode('utf-8').strip()
+        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
+            'utf-8').strip()
         files = ', '.join(result.split('\n'))
         logger.info('Files in %s: [%s]', self.temp_path, files)
 
@@ -165,13 +167,14 @@ class OBSEventHandler(tornado.web.RequestHandler):
         vpks = subprocess.run(f'ls {self.temp_path} | grep vpk', shell=True, capture_output=True, check=False).stdout
         logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
         vpk_files = vpks.decode('utf-8').strip().split('\n')
-        ret = subprocess.run(f'mv {self.temp_path}/*.vpk {self.addons_path}', shell=True).returncode
+        ret = subprocess.run(f'mv {self.temp_path}/*.vpk {self.addons_path}', shell=True, check=False).returncode
         if ret != 0:
             logger.error('Error Occurred at Moving Files: %s', vpk_files)
         logger.info('Moved VPKs! Checking Existence...')
         all_success = True
         for vpk_file in vpk_files:
-            chk_rst = subprocess.run(f'ls {self.addons_path}"{vpk_file}"', shell=True, capture_output=True, check=False)
+            chk_rst = subprocess.run(f'ls {self.addons_path}/"{vpk_file}"', shell=True, capture_output=True,
+                                     check=False)
             logger.debug(chk_rst.stdout.decode('utf-8'))
             if chk_rst.returncode != 0:
                 all_success = False
