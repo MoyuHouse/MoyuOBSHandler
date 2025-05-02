@@ -26,7 +26,7 @@ def bytes2hex(byte_array):
 
 def get_file_type_by_file_head(file_path, output_file_head=False):
     """
-    Returns the file type by reading file head. Now only support zip, rar, and 7z.
+    Returns the file type by reading file head. Now supports zip, rar, 7z, and vpk.
     :param file_path: The file path.
     :param output_file_head: If True, the file head will be printed.
     :return: The file type by reading file head.
