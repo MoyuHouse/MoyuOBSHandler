@@ -20,6 +20,8 @@ from tornado.httputil import HTTPServerRequest
 from tornado.options import define, options
 from tornado.web import Application
 
+from common.file_utils import file_extension_check, file_support_head_check
+
 define("port", default=1919, help="run on the given port", type=int)
 
 HTTP_ACCEPT = 202
@@ -70,8 +72,20 @@ class OBSEventHandler(tornado.web.RequestHandler):
         """
         orig_file_name = file_path.split('/')[-1]
         # 获取类型
-        # 规范来讲应该通过文件头等方式确认，但考虑到内部使用就不做额外验证了
         suffix = orig_file_name.split('.')[-1]
+        if file_support_head_check(suffix):
+            logger.info('Check the file head and extension... Expected file head: %s', suffix)
+            # 通过文件头获取类型，仅支持 zip、7z、rar 和 vpk
+            file_head_check_result, true_type = file_extension_check(f'{self.temp_path}/{orig_file_name}')
+            if file_head_check_result:
+                logger.info('File Head Check Success!')
+            else:
+                # 检测不一致时，以文件头为准选择解压缩命令
+                logger.warning('File Head Check Failed. Expected File Type: %s, Got: %s', suffix, true_type)
+                logger.info('Use %s as the real suffix', true_type)
+                suffix = true_type
+        else:
+            logger.info('Not Supported File Type: %s', suffix)
         unzip_tool = ''
         params = ''
         if suffix == 'zip':

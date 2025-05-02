@@ -3,3 +3,6 @@
 
 # Ignore the config file
 /config
+
+# Ingnore PyCache
+/**/__pycache__
