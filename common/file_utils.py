@@ -35,13 +35,14 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
     """
     file_type = 'unknown'
     with open(file_path, 'rb') as bin_file:
-        tl = TYPE_DICT
-        for h_code, h_type in tl.items():
-            num_of_bytes = int(len(h_code) / 2)
-            bin_file.seek(0)
-            h_bytes = struct.unpack_from("B" * num_of_bytes, bin_file.read(num_of_bytes))
-            file_head_code = bytes2hex(h_bytes)
-            if h_code == file_head_code:
+        # Read the maximum number of bytes required for any signature
+        max_num_of_bytes = max(len(h_code) for h_code in TYPE_DICT.keys()) // 2
+        header_bytes = bin_file.read(max_num_of_bytes)
+        file_head_code = bytes2hex(header_bytes)
+
+        # Compare the file header against each signature
+        for h_code, h_type in TYPE_DICT.items():
+            if file_head_code.startswith(h_code):
                 file_type = h_type
                 break
     if output_file_head:
@@ -52,9 +53,11 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
 def file_extension_check(file_path, debug=False):
     """
     Checks if the given file has a correct file extension.
-    :param file_path: The file with extension
+    :param file_path: The file with extension.
     :param debug: If True, the file extension will be printed.
-    :return: If the file has correct file extension, returns True.
+    :return: A tuple containing:
+        - A boolean indicating whether the file extension matches the file type.
+        - The determined file type based on the file's header.
     """
     file_extension = file_path.split('.')[-1]
     file_head_extension = get_file_type_by_file_head(file_path, debug)
