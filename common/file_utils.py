@@ -2,8 +2,12 @@
     Author: @DZDcyj
     This module provides the file utility functions.
 """
-
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
 
 # 文件头对照表
 TYPE_DICT = {
@@ -46,7 +50,7 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
                 file_type = h_type
                 break
     if output_file_head:
-        print(file_head_code)
+        logger.debug(file_head_code)
     return file_type
 
 
@@ -77,4 +81,4 @@ def is_supported_file_type(file_type):
 if __name__ == '__main__':
     # 测试用文件检测，debug 为 True 时打印文件头信息
     TEST_FILE = 'D:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/addons/workshop/3421356207.vpk'
-    print(file_extension_check(TEST_FILE, debug=True))
+    logger.debug(file_extension_check(TEST_FILE, debug=True))

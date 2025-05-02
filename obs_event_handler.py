@@ -74,7 +74,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         # 获取类型
         suffix = orig_file_name.split('.')[-1]
         if is_supported_file_type(suffix):
-            logger.info('Check the file head and extension... Expected file head: %s', suffix)
+            logger.info('Check the file extension... Expected file extension: %s', suffix)
             # 通过文件头获取类型，仅支持 zip、7z、rar 和 vpk
             file_head_check_result, true_type = file_extension_check(f'{self.temp_path}/{orig_file_name}')
             if file_head_check_result:
