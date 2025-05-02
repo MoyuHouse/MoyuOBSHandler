@@ -59,12 +59,13 @@ def file_extension_check(file_path, debug=False):
         - A boolean indicating whether the file extension matches the file type.
         - The determined file type based on the file's header.
     """
-    file_extension = os.path.splitext(file_path)[1][1:]
+    # 统一转小写判断
+    file_extension = os.path.splitext(file_path)[1][1:].lower()
     file_head_extension = get_file_type_by_file_head(file_path, debug)
     return file_extension == file_head_extension, file_head_extension
 
 
-def file_support_head_check(file_type):
+def is_supported_file_type(file_type):
     """
     Checks if the given file type is supported.
     :param file_type: type of the file.

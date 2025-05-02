@@ -20,7 +20,7 @@ from tornado.httputil import HTTPServerRequest
 from tornado.options import define, options
 from tornado.web import Application
 
-from common.file_utils import file_extension_check, file_support_head_check
+from common.file_utils import file_extension_check, is_supported_file_type
 
 define("port", default=1919, help="run on the given port", type=int)
 
@@ -73,7 +73,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         orig_file_name = file_path.split('/')[-1]
         # 获取类型
         suffix = orig_file_name.split('.')[-1]
-        if file_support_head_check(suffix):
+        if is_supported_file_type(suffix):
             logger.info('Check the file head and extension... Expected file head: %s', suffix)
             # 通过文件头获取类型，仅支持 zip、7z、rar 和 vpk
             file_head_check_result, true_type = file_extension_check(f'{self.temp_path}/{orig_file_name}')
