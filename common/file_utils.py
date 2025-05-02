@@ -3,6 +3,8 @@
     This module provides the file utility functions.
 """
 
+import os
+
 # 文件头对照表
 TYPE_DICT = {
     "504B0304": "zip",  # ZIP file signature
@@ -57,7 +59,7 @@ def file_extension_check(file_path, debug=False):
         - A boolean indicating whether the file extension matches the file type.
         - The determined file type based on the file's header.
     """
-    file_extension = file_path.split('.')[-1]
+    file_extension = os.path.splitext(file_path)[1][1:]
     file_head_extension = get_file_type_by_file_head(file_path, debug)
     return file_extension == file_head_extension, file_head_extension
 
