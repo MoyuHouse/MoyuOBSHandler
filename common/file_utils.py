@@ -3,8 +3,6 @@
     This module provides the file utility functions.
 """
 
-import struct
-
 # 文件头对照表
 TYPE_DICT = {
     "504B0304": "zip",  # ZIP file signature
@@ -35,12 +33,12 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
     """
     file_type = 'unknown'
     with open(file_path, 'rb') as bin_file:
-        # Read the maximum number of bytes required for any signature
-        max_num_of_bytes = max(len(h_code) for h_code in TYPE_DICT.keys()) // 2
+        # 读取文件头
+        max_num_of_bytes = max(len(h_code) for h_code, _ in TYPE_DICT.items()) // 2
         header_bytes = bin_file.read(max_num_of_bytes)
         file_head_code = bytes2hex(header_bytes)
 
-        # Compare the file header against each signature
+        # 对比文件头和记录的值
         for h_code, h_type in TYPE_DICT.items():
             if file_head_code.startswith(h_code):
                 file_type = h_type
