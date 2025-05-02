@@ -36,7 +36,7 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
     file_type = 'unknown'
     with open(file_path, 'rb') as bin_file:
         tl = TYPE_DICT
-        for h_code in tl.keys():
+        for h_code, _ in tl.items():
             num_of_bytes = int(len(h_code) / 2)
             bin_file.seek(0)
             h_bytes = struct.unpack_from("B" * num_of_bytes, bin_file.read(num_of_bytes))
@@ -62,9 +62,15 @@ def file_extension_check(file_path, debug=False):
 
 
 def file_support_head_check(file_type):
+    """
+    Checks if the given file type is supported.
+    :param file_type: type of the file.
+    :return: If the file type is supported, returns True.
+    """
     return file_type in SUPPORT_FILE_TYPE
 
 
 if __name__ == '__main__':
-    test_file = 'D:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/addons/workshop/3421356207.vpk'
-    print(file_extension_check(test_file, debug=True))
+    # 测试用文件检测，debug 为 True 时打印文件头信息
+    TEST_FILE = 'D:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/addons/workshop/3421356207.vpk'
+    print(file_extension_check(TEST_FILE, debug=True))
