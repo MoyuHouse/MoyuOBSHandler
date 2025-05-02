@@ -36,13 +36,13 @@ def get_file_type_by_file_head(file_path, output_file_head=False):
     file_type = 'unknown'
     with open(file_path, 'rb') as bin_file:
         tl = TYPE_DICT
-        for h_code, _ in tl.items():
+        for h_code, h_type in tl.items():
             num_of_bytes = int(len(h_code) / 2)
             bin_file.seek(0)
             h_bytes = struct.unpack_from("B" * num_of_bytes, bin_file.read(num_of_bytes))
             file_head_code = bytes2hex(h_bytes)
             if h_code == file_head_code:
-                file_type = tl[h_code]
+                file_type = h_type
                 break
     if output_file_head:
         print(file_head_code)
