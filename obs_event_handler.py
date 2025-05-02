@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 import subprocess
 import uuid
 from typing import Any
@@ -23,6 +24,8 @@ define("port", default=1919, help="run on the given port", type=int)
 
 HTTP_ACCEPT = 202
 HTTP_BAD_REQUEST = 400
+
+logger = logging.getLogger(__name__)
 
 
 def check_data(data) -> bool:
@@ -81,12 +84,13 @@ class OBSEventHandler(tornado.web.RequestHandler):
             unzip_tool = '7za'
             params = 'e -aoa'
         else:
-            print('Not Archive! Skipping...')
+            logger.info('Not Archive! Skipping...')
             return
 
-        print(subprocess.call(
+        result = subprocess.run(
             f'cd {self.temp_path} && {unzip_tool} {params} {orig_file_name}',
-            shell=True))
+            shell=True, capture_output=True, check=False).stdout.decode('utf-8').strip()
+        logger.debug(result)
 
     def send_400_response(self):
         """
@@ -110,8 +114,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
         if not check_data(self.request.body):
             self.send_400_response()
             return
-        print(self.request.remote_ip)
-        print(unquote(self.request.body.decode('utf-8')))
+        logger.debug(self.request.remote_ip)
+        logger.debug(unquote(self.request.body.decode('utf-8')))
         success_ret = {
             "code": HTTP_ACCEPT,
             "data": {
@@ -135,37 +139,49 @@ class OBSEventHandler(tornado.web.RequestHandler):
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
         obs_file = unquote(obs_orig_file)
-        print(f'{obs_file} upload detected!')
-        print(f'Downloading {obs_file}...')
-        result = subprocess.call(['obsutil', 'cp', f'obs://{self.obs_bucket}/{obs_file}', self.temp_path])
-        if result != 0:
-            print(f'Error: {result}')
+        logger.info('%s upload detected!', obs_file)
+        logger.info('Downloading %s...', obs_file)
+        ret = subprocess.run(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}', shell=True,
+                             capture_output=True, check=False).returncode
+        if ret != 0:
+            logger.error('Error Occurred at Downloading Files: %s', obs_file)
+            return
 
-        print(subprocess.call(['ls', self.temp_path]))
+        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
+            'utf-8').strip()
+        files = ', '.join(result.split('\n'))
+        logger.info('Files in %s: [%s]', self.temp_path, files)
 
         # Unzip
-        print('Handle the Archive...')
+        logger.info('Handling the Archive...')
         self.archive_file_handler(obs_file)
-        print('Unpack Step Complete!')
+        logger.info('Unpack Step Complete!')
 
-        print(subprocess.call(['ls', self.temp_path]))
+        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
+            'utf-8').strip()
+        files = ', '.join(result.split('\n'))
+        logger.info('Files in %s: [%s]', self.temp_path, files)
 
         # Move VPKs
-        print('Moving VPKs...')
-        vpks = subprocess.run(
-            f'ls {self.temp_path} | grep vpk',
-            shell=True, capture_output=True, check=False).stdout
-        print('vpks:\n', vpks.decode('utf-8'))
+        logger.info('Moving VPKs...')
+        vpks = subprocess.run(f'ls {self.temp_path} | grep vpk', shell=True, capture_output=True, check=False).stdout
+        logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
         vpk_files = vpks.decode('utf-8').strip().split('\n')
-        subprocess.call(
-            f'mv {self.temp_path}/*.vpk {self.addons_path}',
-            shell=True)
-        print('Moved VPKs!')
+        ret = subprocess.run(f'mv {self.temp_path}/*.vpk {self.addons_path}', shell=True, check=False).returncode
+        if ret != 0:
+            logger.error('Error Occurred at Moving Files: %s', vpk_files)
+        logger.info('Moved VPKs! Checking Existence...')
+        all_success = True
         for vpk_file in vpk_files:
-            chk_rst = subprocess.run(
-                f'ls {self.addons_path}"{vpk_file}"',
-                shell=True, capture_output=True, check=False)
-            print(chk_rst.stdout.decode('utf-8'))
+            chk_rst = subprocess.run(f'ls {self.addons_path}/"{vpk_file}"', shell=True, capture_output=True,
+                                     check=False)
+            logger.debug(chk_rst.stdout.decode('utf-8'))
+            if chk_rst.returncode != 0:
+                all_success = False
+                logger.error('Error Occurred at Check VPK: %s', vpk_file)
+
+        if all_success:
+            logger.info('All VPKs have been moved successfully!')
 
 
 urls = [(r'/', OBSEventHandler), ]
@@ -176,7 +192,7 @@ def main():
     The main function, starts the server
     """
     tornado.options.parse_command_line()
-    print('Listen at port:', options.port)
+    logger.info('Listen at port: %s', options.port)
     app = tornado.web.Application(urls, debug=True)
     app.listen(options.port)
     tornado.ioloop.IOLoop.current().start()
