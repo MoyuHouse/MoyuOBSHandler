@@ -5,6 +5,7 @@
 
 import json
 import logging
+import threading
 import uuid
 from typing import Any
 from urllib.parse import unquote
@@ -26,8 +27,10 @@ define("port", default=1919, help="run on the given port", type=int)
 
 HTTP_ACCEPT = 202
 HTTP_BAD_REQUEST = 400
+HTTP_CONFLICT = 409
 
 logger = logging.getLogger(__name__)
+lock = threading.Lock()
 
 
 def check_data(data) -> bool:
@@ -49,6 +52,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
     The OBS HTTP Server Class
     """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    processing_files = []
 
     def __init__(self, application: "Application", request: HTTPServerRequest, **kwargs: Any):
         """
@@ -114,9 +118,43 @@ class OBSEventHandler(tornado.web.RequestHandler):
                 "msg": "Required field not in request body!",
             }
         }
-        self.set_status(400)
+        self.set_status(HTTP_BAD_REQUEST)
         self.write(json.dumps(bad_ret))
         self.set_header('Content-Type', 'application/json')
+
+    def send_409_response(self):
+        """
+        function that return 409 response
+        """
+        reflict_ret = {
+            "code": HTTP_CONFLICT,
+            "data": {
+                "msg": "The file you requested is processing, please wait!",
+            }
+        }
+        self.set_status(HTTP_CONFLICT)
+        self.write(json.dumps(reflict_ret))
+        self.set_header('Content-Type', 'application/json')
+
+    def acquire_file_lock(self, file_name):
+        """
+        """
+        with lock:
+            logger.info('Acquire lock for %s success! Now Check File Status.', file_name)
+            if file_name in self.processing_files:
+                logger.info('%s is processing, abort!', file_name)
+                return False
+            self.processing_files.append(file_name)
+            return True
+
+    def release_file_lock(self, file_name):
+        """
+        :param file_name:
+        :return:
+        """
+        with lock:
+            logger.info('Release lock for %s success!', file_name)
+            self.processing_files.remove(file_name)
 
     @gen.coroutine
     def post(self):
@@ -135,6 +173,15 @@ class OBSEventHandler(tornado.web.RequestHandler):
                 "job_id": uuid.uuid4().hex,
             }
         }
+        # datas 为 bytes
+        req = json.loads(self.request.body)
+        obs_orig_file = req['subject']
+        # 解码 HTTP 编码
+        obs_file = unquote(obs_orig_file)
+        if not self.acquire_file_lock(obs_file):
+            logger.info('File %s is processing, return 409!', obs_file)
+            self.send_409_response()
+            return
         self.handle_zip_file(self.request.body)
         self.set_status(202)
         self.write(json.dumps(success_ret))
@@ -195,6 +242,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
         if all_success:
             logger.info('All VPKs have been moved successfully!')
+        self.release_file_lock(obs_file)
 
 
 urls = [(r'/', OBSEventHandler), ]
