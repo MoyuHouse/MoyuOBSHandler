@@ -156,6 +156,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
         ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}')
         if ret.returncode != 0:
             logger.error('Error Occurred at Downloading Files: %s', obs_file)
+            # 此处错误日志输出在 stdout
+            logger.error('Error Info: %s', ret.stdout.decode('utf-8'))
             return
 
         result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
@@ -179,6 +181,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
         ret = execute_shell_command(f'mv {self.temp_path}/*.vpk {self.addons_path}')
         if ret.returncode != 0:
             logger.error('Error Occurred at Moving Files: %s', vpk_files)
+            # 此处错误日志输出在 stderr
+            logger.error('Error Info: %s', ret.stderr.decode('utf-8'))
         logger.info('Moved VPKs! Checking Existence...')
         all_success = True
         for vpk_file in vpk_files:
@@ -187,6 +191,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
             if chk_rst.returncode != 0:
                 all_success = False
                 logger.error('Error Occurred at Check VPK: %s', vpk_file)
+                logger.error('Error Info: %s', chk_rst.stderr.decode('utf-8'))
 
         if all_success:
             logger.info('All VPKs have been moved successfully!')
