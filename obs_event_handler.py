@@ -5,7 +5,6 @@
 
 import json
 import logging
-import subprocess
 import uuid
 from typing import Any
 from urllib.parse import unquote
@@ -20,6 +19,7 @@ from tornado.httputil import HTTPServerRequest
 from tornado.options import define, options
 from tornado.web import Application
 
+from common.common_method import execute_shell_command
 from common.file_utils import file_extension_check, is_supported_file_type
 
 define("port", default=1919, help="run on the given port", type=int)
@@ -101,10 +101,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
             logger.info('Not Archive! Skipping...')
             return
 
-        result = subprocess.run(
-            f'cd {self.temp_path} && {unzip_tool} {params} {orig_file_name}',
-            shell=True, capture_output=True, check=False).stdout.decode('utf-8').strip()
-        logger.debug(result)
+        result = execute_shell_command(f'cd {self.temp_path} && {unzip_tool} {params} {orig_file_name}')
+        logger.debug(result.stdout.decode('utf-8').strip())
 
     def send_400_response(self):
         """
@@ -155,14 +153,12 @@ class OBSEventHandler(tornado.web.RequestHandler):
         obs_file = unquote(obs_orig_file)
         logger.info('%s upload detected!', obs_file)
         logger.info('Downloading %s...', obs_file)
-        ret = subprocess.run(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}', shell=True,
-                             capture_output=True, check=False).returncode
-        if ret != 0:
+        ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}')
+        if ret.returncode != 0:
             logger.error('Error Occurred at Downloading Files: %s', obs_file)
             return
 
-        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
-            'utf-8').strip()
+        result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
         files = ', '.join(result.split('\n'))
         logger.info('Files in %s: [%s]', self.temp_path, files)
 
@@ -171,24 +167,22 @@ class OBSEventHandler(tornado.web.RequestHandler):
         self.archive_file_handler(obs_file)
         logger.info('Unpack Step Complete!')
 
-        result = subprocess.run(f'ls {self.temp_path}', shell=True, capture_output=True, check=False).stdout.decode(
-            'utf-8').strip()
+        result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
         files = ', '.join(result.split('\n'))
         logger.info('Files in %s: [%s]', self.temp_path, files)
 
         # Move VPKs
         logger.info('Moving VPKs...')
-        vpks = subprocess.run(f'ls {self.temp_path} | grep vpk', shell=True, capture_output=True, check=False).stdout
+        vpks = execute_shell_command(f'ls {self.temp_path} | grep vpk').stdout
         logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
         vpk_files = vpks.decode('utf-8').strip().split('\n')
-        ret = subprocess.run(f'mv {self.temp_path}/*.vpk {self.addons_path}', shell=True, check=False).returncode
-        if ret != 0:
+        ret = execute_shell_command(f'mv {self.temp_path}/*.vpk {self.addons_path}')
+        if ret.returncode != 0:
             logger.error('Error Occurred at Moving Files: %s', vpk_files)
         logger.info('Moved VPKs! Checking Existence...')
         all_success = True
         for vpk_file in vpk_files:
-            chk_rst = subprocess.run(f'ls {self.addons_path}/"{vpk_file}"', shell=True, capture_output=True,
-                                     check=False)
+            chk_rst = execute_shell_command(f'ls {self.addons_path}/"{vpk_file}"')
             logger.debug(chk_rst.stdout.decode('utf-8'))
             if chk_rst.returncode != 0:
                 all_success = False
