@@ -126,14 +126,14 @@ class OBSEventHandler(tornado.web.RequestHandler):
         """
         function that return 409 response
         """
-        reflict_ret = {
+        conflict_ret = {
             "code": HTTP_CONFLICT,
             "data": {
                 "msg": "The file you requested is processing, please wait!",
             }
         }
         self.set_status(HTTP_CONFLICT)
-        self.write(json.dumps(reflict_ret))
+        self.write(json.dumps(conflict_ret))
         self.set_header('Content-Type', 'application/json')
 
     def acquire_file_lock(self, file_name):
