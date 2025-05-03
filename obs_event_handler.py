@@ -52,7 +52,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
     The OBS HTTP Server Class
     """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-    processing_files = []
+    processing_files = set()
 
     def __init__(self, application: "Application", request: HTTPServerRequest, **kwargs: Any):
         """
@@ -147,7 +147,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
             if file_name in self.processing_files:
                 logger.info('%s is processing, abort!', file_name)
                 return False
-            self.processing_files.append(file_name)
+            self.processing_files.add(file_name)
             return True
 
     def release_file_lock(self, file_name):
@@ -157,7 +157,10 @@ class OBSEventHandler(tornado.web.RequestHandler):
         """
         with lock:
             logger.info('Release lock for %s success!', file_name)
-            self.processing_files.remove(file_name)
+            if file_name in self.processing_files:
+                self.processing_files.remove(file_name)
+            else:
+                logger.info('%s is not processing, skip!', file_name)
 
     @gen.coroutine
     def post(self):
@@ -202,50 +205,52 @@ class OBSEventHandler(tornado.web.RequestHandler):
         # 解码 HTTP 编码
         obs_file = unquote(obs_orig_file)
         logger.info('%s upload detected!', obs_file)
-        logger.info('Downloading %s...', obs_file)
-        ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}')
-        if ret.returncode != 0:
-            logger.error('Error Occurred at Downloading Files: %s', obs_file)
-            # 此处错误日志输出在 stdout
-            logger.error('Error Info: %s', ret.stdout.decode('utf-8'))
-            return
+        try:
+            logger.info('Downloading %s...', obs_file)
+            ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}')
+            if ret.returncode != 0:
+                logger.error('Error Occurred at Downloading Files: %s', obs_file)
+                # 此处错误日志输出在 stdout
+                logger.error('Error Info: %s', ret.stdout.decode('utf-8'))
+                return
 
-        result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
-        files = ', '.join(result.split('\n'))
-        logger.info('Files in %s: [%s]', self.temp_path, files)
+            result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
+            files = ', '.join(result.split('\n'))
+            logger.info('Files in %s: [%s]', self.temp_path, files)
 
-        # Unzip
-        logger.info('Handling the Archive...')
-        self.archive_file_handler(obs_file)
-        logger.info('Unpack Step Complete!')
+            # Unzip
+            logger.info('Handling the Archive...')
+            self.archive_file_handler(obs_file)
+            logger.info('Unpack Step Complete!')
 
-        result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
-        files = ', '.join(result.split('\n'))
-        logger.info('Files in %s: [%s]', self.temp_path, files)
+            result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
+            files = ', '.join(result.split('\n'))
+            logger.info('Files in %s: [%s]', self.temp_path, files)
 
-        # Move VPKs
-        logger.info('Moving VPKs...')
-        vpks = execute_shell_command(f'ls {self.temp_path} | grep vpk').stdout
-        logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
-        vpk_files = vpks.decode('utf-8').strip().split('\n')
-        ret = execute_shell_command(f'mv {self.temp_path}/*.vpk {self.addons_path}')
-        if ret.returncode != 0:
-            logger.error('Error Occurred at Moving Files: %s', vpk_files)
-            # 此处错误日志输出在 stderr
-            logger.error('Error Info: %s', ret.stderr.decode('utf-8'))
-        logger.info('Moved VPKs! Checking Existence...')
-        all_success = True
-        for vpk_file in vpk_files:
-            chk_rst = execute_shell_command(f'ls {self.addons_path}/"{vpk_file}"')
-            logger.debug(chk_rst.stdout.decode('utf-8'))
-            if chk_rst.returncode != 0:
-                all_success = False
-                logger.error('Error Occurred at Check VPK: %s', vpk_file)
-                logger.error('Error Info: %s', chk_rst.stderr.decode('utf-8'))
+            # Move VPKs
+            logger.info('Moving VPKs...')
+            vpks = execute_shell_command(f'ls {self.temp_path} | grep vpk').stdout
+            logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
+            vpk_files = vpks.decode('utf-8').strip().split('\n')
+            ret = execute_shell_command(f'mv {self.temp_path}/*.vpk {self.addons_path}')
+            if ret.returncode != 0:
+                logger.error('Error Occurred at Moving Files: %s', vpk_files)
+                # 此处错误日志输出在 stderr
+                logger.error('Error Info: %s', ret.stderr.decode('utf-8'))
+            logger.info('Moved VPKs! Checking Existence...')
+            all_success = True
+            for vpk_file in vpk_files:
+                chk_rst = execute_shell_command(f'ls {self.addons_path}/"{vpk_file}"')
+                logger.debug(chk_rst.stdout.decode('utf-8'))
+                if chk_rst.returncode != 0:
+                    all_success = False
+                    logger.error('Error Occurred at Check VPK: %s', vpk_file)
+                    logger.error('Error Info: %s', chk_rst.stderr.decode('utf-8'))
 
-        if all_success:
-            logger.info('All VPKs have been moved successfully!')
-        self.release_file_lock(obs_file)
+            if all_success:
+                logger.info('All VPKs have been moved successfully!')
+        finally:
+            self.release_file_lock(obs_file)
 
 
 urls = [(r'/', OBSEventHandler), ]
