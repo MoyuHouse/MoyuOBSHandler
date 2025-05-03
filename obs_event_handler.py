@@ -138,6 +138,9 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
     def acquire_file_lock(self, file_name):
         """
+        Acquire the lock for file to process.
+        :param file_name: The file name
+        :return: If the lock is acquired
         """
         with lock:
             logger.info('Acquire lock for %s success! Now Check File Status.', file_name)
@@ -149,8 +152,8 @@ class OBSEventHandler(tornado.web.RequestHandler):
 
     def release_file_lock(self, file_name):
         """
-        :param file_name:
-        :return:
+        Release the lock for file to process.
+        :param file_name: The file name
         """
         with lock:
             logger.info('Release lock for %s success!', file_name)
