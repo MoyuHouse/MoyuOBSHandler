@@ -206,7 +206,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
         :param job_id: The job id, for temp directory
         :param payload: The post request body
         """
-        # datas 为 bytes
+        # payload 为 bytes
         req = json.loads(payload)
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
