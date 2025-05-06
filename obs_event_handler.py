@@ -55,7 +55,7 @@ def archive_file_handler(file_path):
     :param file_path: The archive file path
     This function unzip the archive file of zip rar and 7z
     """
-    orig_file_name = file_path.split('/')[-1]
+    orig_file_name = os.path.basename(file_path)
     temp_path = os.path.dirname(file_path)
     # 获取类型
     suffix = orig_file_name.split('.')[-1]
@@ -184,7 +184,7 @@ class OBSEventHandler(tornado.web.RequestHandler):
                 "job_id": job_id,
             }
         }
-        # datas 为 bytes
+        # payload 为 bytes
         req = json.loads(self.request.body)
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
@@ -200,14 +200,14 @@ class OBSEventHandler(tornado.web.RequestHandler):
         self.set_header('Content-Type', 'application/json')
 
     @concurrent.run_on_executor
-    def handle_zip_file(self, datas, job_id):
+    def handle_zip_file(self, payload, job_id):
         """
         This function handle the main process of archives handling
         :param job_id: The job id, for temp directory
-        :param datas: The post request body
+        :param payload: The post request body
         """
         # datas 为 bytes
-        req = json.loads(datas)
+        req = json.loads(payload)
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
         obs_file = unquote(obs_orig_file)
