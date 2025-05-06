@@ -15,3 +15,7 @@ def execute_shell_command(command):
         - returncode: The return code of the command.
     """
     return subprocess.run(command, shell=True, check=False, capture_output=True)
+
+
+def check_list_is_empty_or_whitespace_only(list_):
+    return all(isinstance(item, str) and item.strip() == '' for item in list_)
