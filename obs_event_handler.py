@@ -5,6 +5,8 @@
 
 import json
 import logging
+import os
+import shutil
 import threading
 import uuid
 from typing import Any
@@ -20,7 +22,7 @@ from tornado.httputil import HTTPServerRequest
 from tornado.options import define, options
 from tornado.web import Application
 
-from common.common_method import execute_shell_command
+from common.common_method import execute_shell_command, check_list_is_empty_or_whitespace_only
 from common.file_utils import file_extension_check, is_supported_file_type
 
 define("port", default=1919, help="run on the given port", type=int)
@@ -47,6 +49,48 @@ def check_data(data) -> bool:
 
 
 # pylint: disable=W0223
+def archive_file_handler(file_path):
+    """
+    Handle the Archive File
+    :param file_path: The archive file path
+    This function unzip the archive file of zip rar and 7z
+    """
+    orig_file_name = os.path.basename(file_path)
+    temp_path = os.path.dirname(file_path)
+    # 获取类型
+    suffix = orig_file_name.split('.')[-1]
+    if is_supported_file_type(suffix):
+        logger.info('Check the file extension... Expected file extension: %s', suffix)
+        # 通过文件头获取类型，仅支持 zip、7z、rar 和 vpk
+        file_head_check_result, true_type = file_extension_check(os.path.join(temp_path, orig_file_name))
+        if file_head_check_result:
+            logger.info('File Head Check Success!')
+        else:
+            # 检测不一致时，以文件头为准选择解压缩命令
+            logger.warning('File Head Check Failed. Expected File Type: %s, Got: %s', suffix, true_type)
+            logger.info('Use %s as the real suffix', true_type)
+            suffix = true_type
+    else:
+        logger.info('Not Supported File Type: %s', suffix)
+    unzip_tool = ''
+    params = ''
+    if suffix == 'zip':
+        unzip_tool = 'unzip'
+        params = '-o'
+    elif suffix == 'rar':
+        unzip_tool = 'unrar'
+        params = 'e -o+'
+    elif suffix == '7z':
+        unzip_tool = '7za'
+        params = 'e -aoa'
+    else:
+        logger.info('Not Archive! Skipping...')
+        return
+
+    result = execute_shell_command(f'cd {temp_path} && {unzip_tool} {params} {orig_file_name}')
+    logger.debug(result.stdout.decode('utf-8').strip())
+
+
 class OBSEventHandler(tornado.web.RequestHandler):
     """
     The OBS HTTP Server Class
@@ -67,46 +111,6 @@ class OBSEventHandler(tornado.web.RequestHandler):
             self.addons_path = config['l4d2server']['addons_path']
             self.temp_path = config['l4d2server']['temp_path']
             self.obs_bucket = config['l4d2server']['obs_bucket']
-
-    def archive_file_handler(self, file_path):
-        """
-        Handle the Archive File
-        :param file_path: The archive file path
-        This function unzip the archive file of zip rar and 7z
-        """
-        orig_file_name = file_path.split('/')[-1]
-        # 获取类型
-        suffix = orig_file_name.split('.')[-1]
-        if is_supported_file_type(suffix):
-            logger.info('Check the file extension... Expected file extension: %s', suffix)
-            # 通过文件头获取类型，仅支持 zip、7z、rar 和 vpk
-            file_head_check_result, true_type = file_extension_check(f'{self.temp_path}/{orig_file_name}')
-            if file_head_check_result:
-                logger.info('File Head Check Success!')
-            else:
-                # 检测不一致时，以文件头为准选择解压缩命令
-                logger.warning('File Head Check Failed. Expected File Type: %s, Got: %s', suffix, true_type)
-                logger.info('Use %s as the real suffix', true_type)
-                suffix = true_type
-        else:
-            logger.info('Not Supported File Type: %s', suffix)
-        unzip_tool = ''
-        params = ''
-        if suffix == 'zip':
-            unzip_tool = 'unzip'
-            params = '-o'
-        elif suffix == 'rar':
-            unzip_tool = 'unrar'
-            params = 'e -o+'
-        elif suffix == '7z':
-            unzip_tool = '7za'
-            params = 'e -aoa'
-        else:
-            logger.info('Not Archive! Skipping...')
-            return
-
-        result = execute_shell_command(f'cd {self.temp_path} && {unzip_tool} {params} {orig_file_name}')
-        logger.debug(result.stdout.decode('utf-8').strip())
 
     def send_400_response(self):
         """
@@ -172,67 +176,75 @@ class OBSEventHandler(tornado.web.RequestHandler):
             return
         logger.debug(self.request.remote_ip)
         logger.debug(unquote(self.request.body.decode('utf-8')))
+        job_id = uuid.uuid4().hex
         success_ret = {
             "code": HTTP_ACCEPT,
             "data": {
                 "msg": "create job success!",
-                "job_id": uuid.uuid4().hex,
+                "job_id": job_id,
             }
         }
-        # datas 为 bytes
+        # payload 为 bytes
         req = json.loads(self.request.body)
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
         obs_file = unquote(obs_orig_file)
+        logger.info('%s upload detected! Job id: %s', obs_file, job_id)
         if not self.acquire_file_lock(obs_file):
             logger.info('File %s is processing, return 409!', obs_file)
             self.send_409_response()
             return
-        self.handle_zip_file(self.request.body)
+        self.handle_zip_file(self.request.body, job_id)
         self.set_status(202)
         self.write(json.dumps(success_ret))
         self.set_header('Content-Type', 'application/json')
 
     @concurrent.run_on_executor
-    def handle_zip_file(self, datas):
+    def handle_zip_file(self, payload, job_id):
         """
         This function handle the main process of archives handling
-        :param datas: The post request body
+        :param job_id: The job id, for temp directory
+        :param payload: The post request body
         """
-        # datas 为 bytes
-        req = json.loads(datas)
+        # payload 为 bytes
+        req = json.loads(payload)
         obs_orig_file = req['subject']
         # 解码 HTTP 编码
         obs_file = unquote(obs_orig_file)
-        logger.info('%s upload detected!', obs_file)
+        temp_path = os.path.join(self.temp_path, job_id)
         try:
+            logger.info('Creating Directory: %s', temp_path)
+            execute_shell_command(f'mkdir -p {temp_path}')
             logger.info('Downloading %s...', obs_file)
-            ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {self.temp_path}')
+            ret = execute_shell_command(f'obsutil cp obs://{self.obs_bucket}/{obs_file} {temp_path}')
             if ret.returncode != 0:
                 logger.error('Error Occurred at Downloading Files: %s', obs_file)
                 # 此处错误日志输出在 stdout
                 logger.error('Error Info: %s', ret.stdout.decode('utf-8'))
                 return
 
-            result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
+            result = execute_shell_command(f'ls {temp_path}').stdout.decode('utf-8').strip()
             files = ', '.join(result.split('\n'))
-            logger.info('Files in %s: [%s]', self.temp_path, files)
+            logger.info('Files in %s: [%s]', temp_path, files)
 
             # Unzip
             logger.info('Handling the Archive...')
-            self.archive_file_handler(obs_file)
+            archive_file_handler(os.path.join(self.temp_path, job_id, os.path.basename(obs_file)))
             logger.info('Unpack Step Complete!')
 
-            result = execute_shell_command(f'ls {self.temp_path}').stdout.decode('utf-8').strip()
+            result = execute_shell_command(f'ls {temp_path}').stdout.decode('utf-8').strip()
             files = ', '.join(result.split('\n'))
-            logger.info('Files in %s: [%s]', self.temp_path, files)
+            logger.info('Files in %s: [%s]', temp_path, files)
 
             # Move VPKs
-            logger.info('Moving VPKs...')
-            vpks = execute_shell_command(f'ls {self.temp_path} | grep vpk').stdout
-            logger.info('Vpks in %s: [%s]', self.temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
+            vpks = execute_shell_command(f'ls {temp_path} | grep vpk').stdout
+            logger.info('Vpks in %s: [%s]', temp_path, ', '.join(vpks.decode('utf-8').strip().split('\n')))
             vpk_files = vpks.decode('utf-8').strip().split('\n')
-            ret = execute_shell_command(f'mv {self.temp_path}/*.vpk {self.addons_path}')
+            if check_list_is_empty_or_whitespace_only(vpk_files):
+                logger.warning('No Vpks found! Aborted...')
+                return
+            logger.info('Moving VPKs...')
+            ret = execute_shell_command(f'mv {temp_path}/*.vpk {self.addons_path}')
             if ret.returncode != 0:
                 logger.error('Error Occurred at Moving Files: %s', vpk_files)
                 # 此处错误日志输出在 stderr
@@ -250,6 +262,10 @@ class OBSEventHandler(tornado.web.RequestHandler):
             if all_success:
                 logger.info('All VPKs have been moved successfully!')
         finally:
+            # Remove Temp Path
+            if os.path.exists(temp_path):
+                logger.info('Removing Temp Path: %s', temp_path)
+                shutil.rmtree(temp_path)
             self.release_file_lock(obs_file)
 
 
